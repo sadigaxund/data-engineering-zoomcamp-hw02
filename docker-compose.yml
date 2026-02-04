@@ -1,0 +1,60 @@
+volumes:
+  postgres-data:
+  kestra-data:
+
+services:
+  postgres:
+    image: postgres:18
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    environment:
+      POSTGRES_DB: kestra
+      POSTGRES_USER: kestra
+      POSTGRES_PASSWORD: k3str4
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d kestra -U kestra"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  kestra:
+    image: kestra/kestra:latest
+    user: "root"
+    command: server standalone
+    volumes:
+      - kestra-data:/tmp/kestra-data
+      - /tmp/kestra-data/data:/taxi-data:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      KESTRA_CONFIGURATION: |
+        datasources:
+          postgres:
+            url: jdbc:postgresql://postgres:5432/kestra
+            username: kestra
+            password: k3str4
+        kestra:
+          plugins:
+            configurations:
+              - type: io.kestra.plugin.fs.local.List # Or io.kestra.plugin.fs.local.Downloads, io.kestra.plugin.fs.local.Download
+                values:
+                  allowed-paths:
+                    - /taxi-data
+          repository:
+            type: postgres
+          local-files:
+            allowed-paths:
+              - /taxi-data
+          storage:
+            type: local
+            local:
+              base-path: /tmp/kestra-data
+          queue:
+            type: postgres
+          tasks:
+            tmp-dir:
+              path: /tmp/kestra-data/tmp
+    ports:
+      - "8085:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
